@@ -176,7 +176,10 @@ class GenericContentsManager(ContentsManager, HasTraits):
 
         for obj_path in objects_to_update:
             file_name = self.fs.unprefix(obj_path)
-            self.fs.fs.get(obj_path, './{}'.format(file_name))
+            try:
+                self.fs.fs.get(obj_path, './{}'.format(file_name))
+            except:
+                pass
 
         self._cached_objects = listed_objects
 
