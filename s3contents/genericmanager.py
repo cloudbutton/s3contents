@@ -56,6 +56,7 @@ class GenericContentsManager(ContentsManager, HasTraits):
         super(GenericContentsManager, self).__init__(*args, **kwargs)
         self._fs = None
         self._cached_objects = {}
+        self._cached_dirs = {}
 
     def get_fs(self):
         return self._fs
@@ -161,28 +162,21 @@ class GenericContentsManager(ContentsManager, HasTraits):
         Saves the content of the root into a local cache
         """
         self.log.debug('Saving all content from "s3://{}" into "{}"'.format(self.fs.prefix_, os.getcwd()))
-        all_objects = self.fs.fs.glob(self.fs.prefix_+'/**')
-        all_objects_data = self._convert_file_records(all_objects)
-
-        listed_objects = {}
-        for obj in all_objects_data:
-            listed_objects[obj['path']] = obj
+        listed_objects = self.fs.fs.glob(self.fs.prefix_+'/**', detail=True)
 
         objects_to_update = []
         for obj_path in listed_objects.keys():
             if obj_path in self._cached_objects:
-                if self._cached_objects[obj_path]['last_modified'] != \
-                   listed_objects[obj_path]['last_modified']:
+                if self._cached_objects[obj_path]['type'] == 'file' and \
+                   self._cached_objects[obj_path]['LastModified'] != \
+                   listed_objects[obj_path]['LastModified']:
                     objects_to_update.append(obj_path)
             else:
                 objects_to_update.append(obj_path)
 
         for obj_path in objects_to_update:
             file_name = self.fs.unprefix(obj_path)
-            try:
-                self.fs.fs.get(obj_path, './{}'.format(file_name))
-            except:
-                pass
+            self.fs.fs.get(obj_path, './{}'.format(file_name))
 
         self._cached_objects = listed_objects
 
@@ -193,10 +187,14 @@ class GenericContentsManager(ContentsManager, HasTraits):
             content,
         )
         model = base_directory_model(path)
-        if self.fs.isdir(path):
+        full_path = '/'.join([self.fs.prefix_, path]) if self.fs.prefix_ not in path else path
+        if full_path in self._cached_dirs:
+            model["last_modified"] = model["created"] = self._cached_dirs[full_path]['LastModified']
+        elif self.fs.isdir(path):
             lstat = self.fs.lstat(path)
             if "ST_MTIME" in lstat and lstat["ST_MTIME"]:
                 model["last_modified"] = model["created"] = lstat["ST_MTIME"]
+                self._cached_dirs[full_path] = {'LastModified': lstat["ST_MTIME"]}
         if content:
             if not self.dir_exists(path):
                 self.no_such_entity(path)
@@ -211,7 +209,10 @@ class GenericContentsManager(ContentsManager, HasTraits):
         """
         model = base_model(path)
         model["type"] = "notebook"
-        if self.fs.isfile(path):
+        full_path = '/'.join([self.fs.prefix_, path]) if self.fs.prefix_ not in path else path
+        if full_path in self._cached_objects:
+            model["last_modified"] = model["created"] = self._cached_objects[full_path]['LastModified']
+        elif self.fs.isfile(path):
             model["last_modified"] = model["created"] = self.fs.lstat(path)["ST_MTIME"]
         else:
             self.do_error("Not Found", 404)
@@ -232,7 +233,10 @@ class GenericContentsManager(ContentsManager, HasTraits):
         """
         model = base_model(path)
         model["type"] = "file"
-        if self.fs.isfile(path):
+        full_path = '/'.join([self.fs.prefix_, path]) if self.fs.prefix_ not in path else path
+        if full_path in self._cached_objects:
+            model["last_modified"] = model["created"] = self._cached_objects[full_path]['LastModified']
+        elif self.fs.isfile(path):
             model["last_modified"] = model["created"] = self.fs.lstat(path)["ST_MTIME"]
         else:
             model["last_modified"] = model["created"] = DUMMY_CREATED_DATE
