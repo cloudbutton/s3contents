@@ -162,7 +162,7 @@ class GenericContentsManager(ContentsManager, HasTraits):
         Saves the content of the root into a local cache
         """
         self.log.debug('Saving all content from "s3://{}" into "{}"'.format(self.fs.prefix_, os.getcwd()))
-        listed_objects = self.fs.fs.glob(self.fs.prefix_+'/**', detail=True)
+        listed_objects = self.fs.fs.glob(self.fs.prefix_+'/**')
 
         objects_to_update = []
         for obj_path in listed_objects.keys():
